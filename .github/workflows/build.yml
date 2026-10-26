@@ -1,0 +1,61 @@
+name: Build Rased Admin APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+
+      - name: Configure Android Project
+        run: |
+          rm -rf android
+          flutter create . --platforms=android --project-name rased_admin
+
+          if [ -f android/settings.gradle ]; then
+            sed -i -E 's/id "org.jetbrains.kotlin.android" version "[^"]+"/id "org.jetbrains.kotlin.android" version "1.9.22"/g' android/settings.gradle
+          fi
+
+          if [ -f android/build.gradle ]; then
+            sed -i -E "s/ext\.kotlin_version = '[^']+'/ext.kotlin_version = '1.9.22'/g" android/build.gradle
+          fi
+
+          sed -i 's/flutter.minSdkVersion/21/g' android/app/build.gradle || true
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/g' android/app/build.gradle || true
+
+          # تسمية تطبيق الإدارة على الهاتف باسم "إدارة رصد"
+          sed -i 's/android:label="[^"]*"/android:label="إدارة رصد"/g' android/app/src/main/AndroidManifest.xml
+
+          # إضافة إذن الإنترنت للتحكم في العملاء عن بُعد
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Admin APK
+        run: |
+          mkdir -p build/app/outputs/symbols
+          flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/symbols
+
+      - name: Upload Admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rased-admin-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
